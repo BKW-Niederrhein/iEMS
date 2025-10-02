@@ -1,7 +1,7 @@
 {
     "name": "iEMS Energieanalyse",
     "short_name": "iEMS",
-    "start_url": "iems_pwa.html",
+    "start_url": "index.html",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#317EFB",
