@@ -1,0 +1,23 @@
+{
+  "name": "iEMS Energieanalyse",
+  "short_name": "iEMS",
+  "description": "Dashboard zur Analyse von Energiefl\u00fcssen, Kosten und Ertr\u00e4gen.",
+  "start_url": "iEMS(PWA).html",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#03a9f4",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
