@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iEMS Energieanalyse</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <style>
+        /* Modernes, angenehmes Layout */
+        body {
+            background-color: #f7f7f7; 
+            padding: 2rem;
+        }
+        
+        /* Setzt einen maximalen Container, der alles zentriert */
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .chart-container {
+            position: relative;
+            /* Höhe kann hier angepasst werden (z.B. 90vh für maximale Höhe auf einem Bildschirm) */
+            height: 70vh; 
+            width: 100%;
+            margin-bottom: 2rem;
+            background-color: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Klasse für Hover-Text */
+        .folder-hint {
+            display: none;
+        }
+        .folder-selector-container:hover .folder-hint {
+            display: block;
+        }
+        
+        /* HEADER KORREKTUR: Definiert zwei Spalten: Logo (auto) und Titel (1fr) */
+        .header-grid {
+            display: grid;
+            grid-template-columns: auto 1fr; /* Nur zwei Spalten */
+            align-items: center;
+            margin-bottom: 2rem;
+            gap: 2rem; /* Fügt einen festen Abstand zwischen Logo und Titel ein */
+        }
+        
+        /* Logo-Anpassung */
+        .logo {
+            height: 4rem; 
+            max-width: 100%;
+        }
+        
+/* Passt das Steuerelement an die neue Struktur an */
+        .control-panel {
+            background-color: white; 
+            padding-top: 0.75rem; 
+            padding-bottom: 0.75rem; 
+            padding-left: 1rem; /* <- Hier die Anpassung */
+            padding-right: 1.5rem; 
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: flex-start;
+        }
+        
+    </style>
+</head>
+<body>
+    
+    <div class="main-container">
+
+        <header class="header-grid">
+            <div class="flex justify-start">
+                 <img src="BKW-NR_Logo_Schrift.png" alt="Logo" class="logo">
+            </div>
+            
+            <div class="ml-auto">
+                <div class="flex flex-col items-start">
+                    <div class="flex items-baseline">
+                        <h1 class="text-4xl font-bold text-gray-800">iEMS</h1>
+                        <span class="text-xs text-gray-500 ml-2">© by von Bernsdorf</span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-gray-700">Energie-Analyse Dashboard</h2>
+                </div>
+            </div>
+        </header>
+
+        <div class="control-panel">
+            
+            <div class="flex items-end space-x-4">
+                <div class="folder-selector-container flex flex-col items-start">
+                    <label for="folderSelector" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer transition ease-in-out duration-150">
+                        📁 Lade Daten (Ordner wählen)
+                    </label>
+                    <input type="file" id="folderSelector" webkitdirectory="" mozdirectory="" msdirectory="" odirectory="" directory="" class="hidden" onchange="handleFolderSelect(event)">
+                    
+                    <p class="mt-3 text-sm text-gray-500 folder-hint">Bitte wählen Sie den Ordner, der die "iEMSconfig.txt" und die .csv-Dateien enthält.</p>
+                </div>
+                
+                <div id="readFilesInfo" class="text-xs text-gray-400 cursor-pointer hover:text-indigo-600" title="Warten auf Dateiauswahl...">
+                    (Debug: Überprüfe eingelesene Dateien hier)
+                </div>
+            </div>
+        </div>
+
+        <main class="space-y-12">
+            <div class="chart-card">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-4">Energie (kWh)</h2>
+                <div class="chart-container">
+                    <canvas id="chartKWH"></canvas>
+                </div>
+            </div>
+
+            <hr class="border-gray-300">
+
+            <div class="chart-card">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-4">Kosten/Ertrag (€)</h2>
+                <div class="chart-container">
+                    <canvas id="chartEUR"></canvas>
+                </div>
+            </div>
+        </main>
+
+        <footer class="mt-8 text-center text-sm text-gray-500">
+            <p id="statusMessage">Warten auf die Auswahl eines Ordners...</p>
+        </footer>
+        
+    </div> <script>
+        // --- Globale Variablen und Konfiguration (Unverändert) ---
+        const CONFIG_FILENAME = "iEMSconfig.txt";
+        const CHART_KWH_ID = 'chartKWH';
+        const CHART_EUR_ID = 'chartEUR';
+
+        let configData = {};
+        let chartKWHInstance = null;
+        let chartEURInstance = null;
+
+        const energyColors = [
+            '#90EE90', // Hellgrün
+            '#3CB371', 
+            '#008000', 
+            '#006400', 
+            '#004D00', // Dunkelgrün
+        ];
+        const batteryColor = '#800080'; // Lila
+
+        // Hilfsfunktion zur Monatsabkürzung (Unverändert)
+        function formatMonthLabel(date) {
+            const monthPart = date.toLocaleString('de-DE', { month: 'long' });
+            const yearPart = date.toLocaleString('de-DE', { year: 'numeric' });
+            
+            if (monthPart.length > 4) {
+                 const shortMonth = monthPart.substring(0, 3) + '.';
+                 return `${shortMonth} ${yearPart}`;
+            }
+            return date.toLocaleString('de-DE', { month: 'short', year: 'numeric' }).replace('.', '');
+        }
+
+        // --- Datenverarbeitung (Unverändert) ---
+
+        function parseWhValue(valueStr) {
+            let cleanStr = valueStr.trim();
+            if (cleanStr.length === 0) return null;
+            cleanStr = cleanStr.replace(/,/g, ''); 
+            let value = parseFloat(cleanStr);
+            if (!isNaN(value)) {
+                return value; 
+            }
+            return null;
+        }
+
+        function parseDataLine(line) {
+            line = line.replace(/^\s+|\s+$/g, '').replace(/^\uFEFF/, ''); 
+            if (line.startsWith('Zeit') || line.length === 0) return null; 
+
+            const parts = line.split(',');
+            if (parts.length < 2) return null;
+
+            const dateTimeStr = parts[0].trim(); 
+            const valueStr = parts.slice(1).join(','); 
+
+            const rawWh = parseWhValue(valueStr);
+            if (rawWh === null || rawWh === 0) return null;
+
+            const kwh = rawWh / 1000.0;
+            
+            const dateParts = dateTimeStr.split(' ')[0].split('/'); 
+            if (dateParts.length < 3) return null;
+            
+            const monthIndex = parseInt(dateParts[1], 10) - 1;
+            const year = parseInt(dateParts[2], 10);
+
+            const date = new Date(year, monthIndex, 1);
+            
+            const monthLabel = formatMonthLabel(date);
+            const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+            
+            return {
+                monthKey,
+                monthLabel,
+                kwh: kwh
+            };
+        }
+
+        // Liest Konfigurationsdatei (Unverändert)
+        async function readConfigFile(configFile) {
+            const content = await configFile.text();
+            const lines = content.split('\n');
+            const config = {};
+            
+            lines.forEach(line => {
+                line = line.trim();
+                if (line.startsWith('#') || line.length === 0) return; 
+                
+                const parts = line.split(':');
+                if (parts.length < 2) return;
+                
+                const key = parts[0].trim();
+                let value = parts.slice(1).join(':').trim().replace('...', ''); 
+                
+                // Prüft auf das Name-Feld
+                const nameMatch = value.match(/;\s*Name:\s*"(.*?)"/);
+                let customName = null;
+                
+                if (nameMatch) {
+                    customName = nameMatch[1].trim();
+                    // Entfernt den Namens-Teil, um nur den Dateipräfix zu behalten
+                    value = value.replace(nameMatch[0], '').trim();
+                }
+                
+                // Speichert entweder das {filePrefix, displayName} Objekt oder den einfachen String (für Zentraldatei/Kosten)
+                if (customName) {
+                    config[key] = {
+                        filePrefix: value,
+                        displayName: customName
+                    };
+                } else {
+                    config[key] = value;
+                }
+            });
+
+            // Spezielle Logik für Euro pro Kilowattstunde
+            const centPerKwhValue = config['Cent pro Kilowattstunde'];
+            const centPerKwhMatch = (typeof centPerKwhValue === 'string') 
+                ? centPerKwhValue.match(/(\d+,\d+|\d+)\€\/kWh/)
+                : null;
+
+            if (centPerKwhMatch) {
+                config.euroPerKwh = parseFloat(centPerKwhMatch[1].replace(',', '.')); 
+            } else {
+                config.euroPerKwh = 0.37;
+            }
+
+            return config;
+        }
+
+        // Liest CSV-Dateien (Unverändert)
+        async function readCSVFile(csvFile) {
+            let content = await csvFile.text();
+            content = content.replace(/^\uFEFF/, ''); 
+            const lines = content.split('\n');
+            const monthlyData = {};
+            
+            let inDataSection = false;
+            let currentSectionType = null; // 'Bezug' oder 'Rueckspeisung'
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmedLine = line.trim();
+
+                // 1. Suche nach dem Start der relevanten Sektionen (nur Gesamtwerte)
+                if (trimmedLine.includes('Zeit, Wh')) {
+                    const precedingText = lines[i - 1] || "";
+                    const precedingTextLower = precedingText.toLowerCase();
+
+                    if (precedingTextLower.includes('gesamt zurückgespeist')) {
+                        inDataSection = true;
+                        currentSectionType = 'Rueckspeisung';
+                        continue;
+                    } else if (precedingTextLower.includes('gesamt') && !precedingTextLower.includes('zurückgespeist')) {
+                        inDataSection = true;
+                        currentSectionType = 'Bezug';
+                        continue;
+                    }
+                    inDataSection = false;
+                    currentSectionType = null;
+                } 
+                
+                // 2. Datenverarbeitung innerhalb der Sektion
+                if (inDataSection) {
+                    if (trimmedLine.length === 0 || trimmedLine.toLowerCase().includes('phase') || trimmedLine.toLowerCase().includes('verbrauch')) {
+                        inDataSection = false;
+                        currentSectionType = null;
+                        continue;
+                    }
+
+                    const parsed = parseDataLine(trimmedLine);
+                    
+                    if (parsed && currentSectionType) {
+                        const { monthKey, monthLabel, kwh } = parsed;
+
+                        if (!monthlyData[monthKey]) {
+                            monthlyData[monthKey] = {
+                                monthLabel: monthLabel,
+                                'Gesamt': 0, 
+                                'Gesamt zurückgespeist': 0, 
+                            };
+                        }
+                        
+                        if (currentSectionType === 'Rueckspeisung') {
+                            monthlyData[monthKey]['Gesamt zurückgespeist'] += Math.abs(kwh);
+                        } else if (currentSectionType === 'Bezug') {
+                            monthlyData[monthKey]['Gesamt'] += kwh;
+                        }
+                    } 
+                }
+            }
+            
+            return Object.keys(monthlyData).map(key => ({
+                monthKey: key,
+                ...monthlyData[key]
+            }));
+        }
+
+
+        // --- Hauptlogik (KORRIGIERT: Sortierreihenfolge der Datensätze) ---
+
+        async function handleFolderSelect(event) {
+            const files = event.target.files;
+            if (files.length === 0) {
+                document.getElementById('statusMessage').textContent = "Keine Dateien ausgewählt.";
+                return;
+            }
+
+            document.getElementById('statusMessage').textContent = "Verarbeite Daten...";
+
+            const fileList = Array.from(files);
+            const debugInfoElement = document.getElementById('readFilesInfo');
+            debugInfoElement.textContent = `(Debug: Suche nach ${CONFIG_FILENAME} und CSV-Dateien...)`;
+            debugInfoElement.title = "Suche nach Dateien...";
+            
+            let successfullyProcessedFiles = [];
+
+            const configFile = fileList.find(file => file.name === CONFIG_FILENAME);
+            if (!configFile) {
+                document.getElementById('statusMessage').textContent = `Fehler: Die Konfigurationsdatei "${CONFIG_FILENAME}" wurde nicht gefunden.`;
+                return;
+            }
+
+            try {
+                configData = await readConfigFile(configFile);
+                
+                const allMonthlyData = {};
+                // Datasets wird nun später in der korrekten Reihenfolge befüllt
+                const datasets = []; 
+                
+                // Hilfsfunktion zur Ermittlung des Dateipräfixes und des Anzeigenamens
+                const getFileDetails = (key) => {
+                    const entry = configData[key];
+                    if (typeof entry === 'object' && entry !== null) {
+                        return { 
+                            fileNamePrefix: entry.filePrefix, 
+                            customName: entry.displayName 
+                        };
+                    }
+                    // Fallback für alte Einträge oder die Zentraldatei
+                    return { 
+                        fileNamePrefix: entry, 
+                        customName: key 
+                    };
+                };
+
+                // Zentrale Datei A) verarbeiten
+                const centralDetails = getFileDetails('iEMS Zentraldatei');
+                const centralFileName = centralDetails.fileNamePrefix;
+                const centralFile = fileList.find(f => f.name.startsWith(centralFileName) && f.name.endsWith('.csv'));
+                
+                if (centralFile) {
+                    const data = await readCSVFile(centralFile); 
+                    if (data.length > 0) {
+                        successfullyProcessedFiles.push(centralFile.name);
+                        data.forEach(month => {
+                            if (!allMonthlyData[month.monthKey]) {
+                                allMonthlyData[month.monthKey] = {
+                                    monthLabel: month.monthLabel,
+                                    sortKey: month.monthKey,
+                                    data: {}
+                                };
+                            }
+                            allMonthlyData[month.monthKey].data['zentral-bezug'] = month['Gesamt'];
+                            allMonthlyData[month.monthKey].data['zentral-rueck'] = -Math.abs(month['Gesamt zurückgespeist']);
+                        });
+                    }
+                }
+                
+                // Erzeugung B) und Batteriespeicher C) verarbeiten
+                const erzeugungKeys = Object.keys(configData).filter(key => key.startsWith('Erzeugung_'));
+                const batterieKeys = Object.keys(configData).filter(key => key.startsWith('Batteriespeicher_'));
+                const dynamicKeys = [...erzeugungKeys, ...batterieKeys];
+                
+                for (const key of dynamicKeys) {
+                    const { fileNamePrefix, customName } = getFileDetails(key);
+                    
+                    // Nur verarbeiten, wenn ein Dateipräfix existiert und nicht 'x' ist
+                    if (fileNamePrefix && fileNamePrefix !== 'x') {
+                        const csvFile = fileList.find(f => f.name.startsWith(fileNamePrefix) && f.name.endsWith('.csv'));
+                        
+                        if (csvFile) {
+                            const data = await readCSVFile(csvFile); 
+                            
+                            if (data.length > 0) {
+                                successfullyProcessedFiles.push(csvFile.name);
+                                data.forEach(month => {
+                                    if (!allMonthlyData[month.monthKey]) {
+                                        allMonthlyData[month.monthKey] = {
+                                            monthLabel: month.monthLabel,
+                                            sortKey: month.monthKey,
+                                            data: {}
+                                        };
+                                    }
+                                    allMonthlyData[month.monthKey].data[key] = month['Gesamt zurückgespeist'];
+                                });
+                            }
+                        }
+                    }
+                };
+
+                // 4. Daten für Chart.js aufbereiten (Sortierung und Datasets)
+                const sortedMonths = Object.values(allMonthlyData).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+                const labels = sortedMonths.map(m => m.monthLabel);
+                
+                // DEBUG-Update des Feldes
+                const filesMessage = successfullyProcessedFiles.length > 0
+                    ? `Erfolgreich eingelesene CSV-Dateien:\n${successfullyProcessedFiles.join('\n')}`
+                    : "Keine CSV-Dateien gefunden, die zur Konfiguration passen oder gültige Daten enthielten. Bitte prüfen Sie die Konfigurationsdatei und die Dateinamen.";
+
+                debugInfoElement.textContent = `(Debug: ${successfullyProcessedFiles.length} Dateien erfolgreich geparst)`;
+                debugInfoElement.title = filesMessage;
+                
+                if (labels.length === 0) {
+                    document.getElementById('statusMessage').textContent = "FEHLER: Es wurden keine Monatsdaten gefunden. Die Debug-Funktion zeigt die eingelesenen Dateien an.";
+                    return;
+                }
+                
+                // NEU: Datasets in der korrekten Reihenfolge hinzufügen (von unten nach oben gezeichnet)
+                
+                // 1. B) Erzeugung (Grün)
+                erzeugungKeys.forEach((key, index) => {
+                    const { fileNamePrefix, customName } = getFileDetails(key);
+                    
+                    if (fileNamePrefix && fileNamePrefix !== 'x') {
+                        datasets.push({
+                            label: customName, 
+                            data: sortedMonths.map(m => m.data[key] || 0),
+                            backgroundColor: energyColors[index % energyColors.length], 
+                            stack: 'Stack 0',
+                        });
+                    }
+                });
+                
+                // 2. C) Batteriespeicher (Lila)
+                batterieKeys.forEach((key, index) => {
+                    const { fileNamePrefix, customName } = getFileDetails(key);
+                    
+                    if (fileNamePrefix && fileNamePrefix !== 'x') {
+                        datasets.push({
+                            label: customName, 
+                            data: sortedMonths.map(m => m.data[key] || 0),
+                            backgroundColor: batteryColor, 
+                            stack: 'Stack 0',
+                        });
+                    }
+                });
+                
+                // 3. A) EVU-Bezug (Blau)
+                datasets.push({
+                    label: 'EVU-Bezug', 
+                    data: sortedMonths.map(m => m.data['zentral-bezug'] || 0),
+                    backgroundColor: 'blue',
+                    stack: 'Stack 0',
+                });
+                
+                // 4. A) Rückspeisung an EVU (Orange)
+                datasets.push({
+                    label: 'Rückspeisung an EVU', 
+                    data: sortedMonths.map(m => m.data['zentral-rueck'] || 0),
+                    backgroundColor: 'orange',
+                    stack: 'Stack 0',
+                });
+
+                
+                // 5. Diagramm 2 (€) erstellen
+                const euroPerKwh = configData.euroPerKwh || 0.37;
+                const datasetsEUR = datasets.map(dataSet => ({
+                    ...dataSet,
+                    // Wichtig: Datenwerte bleiben unverändert, nur die Label-Reihenfolge ändert sich
+                    data: dataSet.data.map(kwh => parseFloat((kwh * euroPerKwh).toFixed(2))), 
+                    label: dataSet.label,
+                }));
+                
+                // 6. Diagramme erstellen oder aktualisieren
+                renderCharts(labels, datasets, datasetsEUR, euroPerKwh);
+
+                document.getElementById('statusMessage').textContent = `Daten von ${Object.keys(allMonthlyData).length} Monaten erfolgreich geladen und Diagramme erstellt.`;
+
+            } catch (error) {
+                console.error("Fehler bei der Datenverarbeitung:", error);
+                debugInfoElement.textContent = `(Debug: FEHLER bei der Verarbeitung)`;
+                document.getElementById('statusMessage').textContent = `Ein schwerwiegender Fehler ist aufgetreten: ${error.message}. Bitte überprüfen Sie die Konsole (F12) auf Details.`;
+            }
+        }
+
+        /**
+         * Erstellt die Chart.js Diagramme.
+         */
+        function renderCharts(labels, dataSetsKWH, dataSetsEUR, euroPerKwh) {
+            
+            const customTooltip = {
+                callbacks: {
+                    label: function(context) {
+                        const label = context.dataset.label || '';
+                        const value = context.parsed.y;
+                        const unit = context.chart.options.scales.y.title.text.includes('€') ? '€' : 'kWh';
+                        
+                        let formattedValue;
+                        if (unit === '€') {
+                           formattedValue = value.toFixed(2);
+                        } else {
+                           // Absolutwert anzeigen für bessere Lesbarkeit, da es positive Werte in der Bilanz sind
+                           formattedValue = Math.abs(value).toFixed(3); 
+                        }
+                        
+                        return `${label}: ${formattedValue} ${unit}`;
+                    }
+                }
+            };
+
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: customTooltip,
+                    legend: {
+                        display: true,
+                        position: 'top',
+                    },
+                },
+                // Einstellung für Touch-Geräte
+                interaction: {
+                    mode: 'index',     
+                    intersect: false   
+                },
+                scales: {
+                    x: {
+                        stacked: true, 
+                        title: {
+                             display: false,
+                        },
+                        grid: {
+                            display: false,
+                        }
+                    },
+                    y: {
+                        stacked: true, 
+                        beginAtZero: false,
+                        title: {
+                             display: true,
+                             text: 'Werte',
+                        }
+                    }
+                }
+            };
+            
+            // --- Diagramm 1 (kWh) ---
+            if (chartKWHInstance) chartKWHInstance.destroy();
+            chartKWHInstance = new Chart(document.getElementById(CHART_KWH_ID), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: dataSetsKWH,
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: {
+                            ...commonOptions.scales.y,
+                            title: {
+                                display: true,
+                                text: 'Energie (kWh)',
+                            }
+                        }
+                    }
+                }
+            });
+
+            // --- Diagramm 2 (€) ---
+            if (chartEURInstance) chartEURInstance.destroy();
+            chartEURInstance = new Chart(document.getElementById(CHART_EUR_ID), {
+                 type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: dataSetsEUR,
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: {
+                            ...commonOptions.scales.y,
+                            title: {
+                                display: true,
+                                text: `Kosten/Ertrag (€) - Basis: ${euroPerKwh.toFixed(2).replace('.', ',')} €/kWh`,
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+    </script>
+
+</body>
+</html>
