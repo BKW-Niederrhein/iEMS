@@ -40,13 +40,13 @@
             display: block;
         }
         
-        /* HEADER KORREKTUR: Definiert zwei Spalten: Logo (auto) und Titel (1fr) */
+        /* HEADER KORREKTUR: Definiert eine einzelne Spalte für vertikale Ausrichtung */
         .header-grid {
             display: grid;
-            grid-template-columns: auto 1fr; /* Nur zwei Spalten */
-            align-items: center;
+            grid-template-columns: 1fr; /* Nur eine Spalte */
+            align-items: start; /* Oben ausrichten */
             margin-bottom: 2rem;
-            gap: 2rem; /* Fügt einen festen Abstand zwischen Logo und Titel ein */
+            gap: 1rem; /* Reduzierter Abstand, da es jetzt vertikal ist */
         }
         
         /* Logo-Anpassung */
@@ -55,18 +55,15 @@
             max-width: 100%;
         }
         
-/* Passt das Steuerelement an die neue Struktur an */
+/* Passt das Steuerelement an die neue Struktur an - Jetzt als Block für vertikalen Fluss */
         .control-panel {
             background-color: white; 
-            padding-top: 0.75rem; 
-            padding-bottom: 0.75rem; 
-            padding-left: 1rem; /* <- Hier die Anpassung */
-            padding-right: 1.5rem; 
+            padding: 1rem 1.5rem; /* PADDING VEREINFACHT */
             border-radius: 0.5rem;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
             margin-bottom: 2rem;
-            display: flex;
-            align-items: flex-start;
+            display: block; /* Änderung von flex zu block */
+            align-items: flex-start; /* Wird ignoriert wegen display: block, aber beibehalten */
         }
         
     </style>
@@ -80,31 +77,29 @@
                  <img src="BKW-NR_Logo_Schrift.png" alt="Logo" class="logo">
             </div>
             
-            <div class="ml-auto">
-                <div class="flex flex-col items-start">
-                    <div class="flex items-baseline">
-                        <h1 class="text-4xl font-bold text-gray-800">iEMS</h1>
-                        <span class="text-xs text-gray-500 ml-2">© by von Bernsdorf</span>
-                    </div>
-                    <h2 class="text-2xl font-bold text-gray-700">Energie-Analyse Dashboard</h2>
+            <div class="flex flex-col items-start mt-4">
+                <div class="flex items-baseline">
+                    <h1 class="text-4xl font-bold text-gray-800">iEMS</h1>
+                    <span class="text-xs text-gray-500 ml-2">© by von Bernsdorf</span>
                 </div>
+                <h2 class="text-2xl font-bold text-gray-700">Energie-Analyse Dashboard</h2>
             </div>
         </header>
 
         <div class="control-panel">
             
-            <div class="flex items-end space-x-4">
+            <div class="flex flex-col space-y-2">
                 <div class="folder-selector-container flex flex-col items-start">
                     <label for="folderSelector" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer transition ease-in-out duration-150">
                         📁 Lade Daten (Ordner wählen)
                     </label>
                     <input type="file" id="folderSelector" webkitdirectory="" mozdirectory="" msdirectory="" odirectory="" directory="" class="hidden" onchange="handleFolderSelect(event)">
                     
-                    <p class="mt-3 text-sm text-gray-500 folder-hint">Bitte wählen Sie den Ordner, der die "iEMSconfig.txt" und die .csv-Dateien enthält.</p>
+                    <p class="mt-3 text-sm text-gray-500 folder-hint">Bitte wählen Sie den Ordner,<br>der die "iEMSconfig.txt" und die .csv-Dateien enthält.</p>
                 </div>
                 
-                <div id="readFilesInfo" class="text-xs text-gray-400 cursor-pointer hover:text-indigo-600" title="Warten auf Dateiauswahl...">
-                    (Debug: Überprüfe eingelesene Dateien hier)
+                <div id="readFilesInfo" class="text-xs text-gray-400 cursor-pointer hover:text-indigo-600">
+                    
                 </div>
             </div>
         </div>
@@ -329,7 +324,7 @@
         }
 
 
-        // --- Hauptlogik (KORRIGIERT: Sortierreihenfolge der Datensätze) ---
+        // --- Hauptlogik (KORRIGIERT: Statusmeldungen) ---
 
         async function handleFolderSelect(event) {
             const files = event.target.files;
@@ -342,8 +337,7 @@
 
             const fileList = Array.from(files);
             const debugInfoElement = document.getElementById('readFilesInfo');
-            debugInfoElement.textContent = `(Debug: Suche nach ${CONFIG_FILENAME} und CSV-Dateien...)`;
-            debugInfoElement.title = "Suche nach Dateien...";
+            // Der Debug-Text wird beim Start der Funktion nicht mehr gesetzt (bleibt leer), um ihn initial auszublenden.
             
             let successfullyProcessedFiles = [];
 
@@ -435,15 +429,23 @@
                 const sortedMonths = Object.values(allMonthlyData).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
                 const labels = sortedMonths.map(m => m.monthLabel);
                 
-                // DEBUG-Update des Feldes
-                const filesMessage = successfullyProcessedFiles.length > 0
+                // NEU: Zählung der Monate (X) und Dateien (Y)
+                const numberOfMonths = labels.length;
+                const numberOfFiles = successfullyProcessedFiles.length;
+
+                // DEBUG-Update des Feldes (Detailansicht im Titel)
+                const filesMessage = numberOfFiles > 0
                     ? `Erfolgreich eingelesene CSV-Dateien:\n${successfullyProcessedFiles.join('\n')}`
                     : "Keine CSV-Dateien gefunden, die zur Konfiguration passen oder gültige Daten enthielten. Bitte prüfen Sie die Konfigurationsdatei und die Dateinamen.";
 
-                debugInfoElement.textContent = `(Debug: ${successfullyProcessedFiles.length} Dateien erfolgreich geparst)`;
+                // NEU: Setze den Erfolgs-Text (Y Dateien)
+                if (numberOfMonths > 0) {
+                    debugInfoElement.textContent = `Analyse erfolgreich für ${numberOfMonths} Monate. ${numberOfFiles} Dateien erfolgreich eingelesen.`;
+                }
+
                 debugInfoElement.title = filesMessage;
                 
-                if (labels.length === 0) {
+                if (numberOfMonths === 0) {
                     document.getElementById('statusMessage').textContent = "FEHLER: Es wurden keine Monatsdaten gefunden. Die Debug-Funktion zeigt die eingelesenen Dateien an.";
                     return;
                 }
@@ -507,11 +509,13 @@
                 // 6. Diagramme erstellen oder aktualisieren
                 renderCharts(labels, datasets, datasetsEUR, euroPerKwh);
 
-                document.getElementById('statusMessage').textContent = `Daten von ${Object.keys(allMonthlyData).length} Monaten erfolgreich geladen und Diagramme erstellt.`;
+                // Finale Statusmeldung im Footer (unverändert in der Struktur)
+                document.getElementById('statusMessage').textContent = `Daten von ${numberOfMonths} Monaten erfolgreich geladen und Diagramme erstellt.`;
 
             } catch (error) {
                 console.error("Fehler bei der Datenverarbeitung:", error);
-                debugInfoElement.textContent = `(Debug: FEHLER bei der Verarbeitung)`;
+                debugInfoElement.textContent = ``; // Bleibt leer
+                debugInfoElement.title = `FEHLER: ${error.message}`;
                 document.getElementById('statusMessage').textContent = `Ein schwerwiegender Fehler ist aufgetreten: ${error.message}. Bitte überprüfen Sie die Konsole (F12) auf Details.`;
             }
         }
